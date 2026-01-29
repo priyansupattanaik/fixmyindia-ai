@@ -1,0 +1,38 @@
+@"
+# Dependencies
+node_modules/
+package-lock.json
+
+# Build outputs (NEVER commit these)
+dist/
+.next/
+out/
+build/
+
+# Environment secrets
+.env
+.env.local
+.env.development
+.env.production
+.env*.local
+.env.local.example
+
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Vercel/Netlify
+.vercel
+.netlify
+"@ | Out-File -FilePath .gitignore -Encoding utf8 -Force

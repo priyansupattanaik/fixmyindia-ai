@@ -1,0 +1,196 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Poppins:wght@400;500;600;700&family=Noto+Sans+Devanagari:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-saffron: 249, 115, 22;
+  --color-chakra: 2, 132, 199;
+  --color-growth: 22, 197, 94;
+  --color-paper: 255, 251, 247;
+  --color-ink: 26, 26, 26;
+
+  --glass-border: rgba(255, 255, 255, 0.18);
+  --glass-surface: rgba(255, 255, 255, 0.65);
+  --glass-surface-strong: rgba(255, 255, 255, 0.85);
+
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-expo: cubic-bezier(0.7, 0, 0.84, 0);
+
+  --space-xs: 0.5rem;
+  --space-sm: 1rem;
+  --space-md: 1.5rem;
+  --space-lg: 2.5rem;
+  --space-xl: 4rem;
+
+  --text-xs: clamp(0.64rem, 0.05vw + 0.63rem, 0.68rem);
+  --text-sm: clamp(0.8rem, 0.17vw + 0.76rem, 0.94rem);
+  --text-base: clamp(1rem, 0.34vw + 0.91rem, 1.33rem);
+  --text-lg: clamp(1.25rem, 0.61vw + 1.1rem, 1.78rem);
+  --text-xl: clamp(1.56rem, 1vw + 1.31rem, 2.37rem);
+  --text-2xl: clamp(1.95rem, 1.56vw + 1.56rem, 3.16rem);
+  --text-3xl: clamp(2.44rem, 2.38vw + 1.85rem, 4.21rem);
+}
+
+@layer base {
+  * {
+    @apply border-slate-200;
+  }
+
+  html {
+    @apply antialiased scroll-smooth;
+    font-family: "Inter", sans-serif;
+  }
+
+  body {
+    @apply bg-paper text-ink;
+    background-image:
+      radial-gradient(
+        at 0% 0%,
+        rgba(var(--color-saffron), 0.15) 0px,
+        transparent 50%
+      ),
+      radial-gradient(
+        at 100% 100%,
+        rgba(var(--color-chakra), 0.1) 0px,
+        transparent 50%
+      ),
+      radial-gradient(
+        at 50% 50%,
+        rgba(var(--color-growth), 0.05) 0px,
+        transparent 50%
+      );
+    background-attachment: fixed;
+    min-height: 100vh;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: "Poppins", sans-serif;
+    @apply font-semibold tracking-tight;
+  }
+
+  ::selection {
+    @apply bg-saffron-200 text-saffron-900;
+  }
+
+  ::-webkit-scrollbar {
+    @apply w-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-slate-300 rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-400;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply relative overflow-hidden rounded-2xl border border-white/40 backdrop-blur-md;
+    background: linear-gradient(
+      135deg,
+      var(--glass-surface) 0%,
+      rgba(255, 255, 255, 0.4) 100%
+    );
+    box-shadow:
+      0 4px 6px -1px rgba(0, 0, 0, 0.05),
+      0 2px 4px -1px rgba(0, 0, 0, 0.03),
+      inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  }
+
+  .glass-card-strong {
+    background: linear-gradient(
+      135deg,
+      var(--glass-surface-strong) 0%,
+      rgba(255, 255, 255, 0.7) 100%
+    );
+    box-shadow:
+      0 8px 32px rgba(31, 38, 135, 0.1),
+      inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  }
+
+  .btn-primary {
+    @apply relative overflow-hidden rounded-xl bg-saffron-500 px-6 py-3 font-semibold text-white shadow-lg transition-all duration-300;
+    font-family: "Poppins", sans-serif;
+  }
+
+  .btn-primary:hover {
+    @apply bg-saffron-600 shadow-saffron-glow;
+    transform: translateY(-2px);
+  }
+
+  .btn-primary:active {
+    transform: translateY(0);
+  }
+
+  .btn-secondary {
+    @apply rounded-xl border-2 border-chakra-600 bg-white/80 px-6 py-3 font-semibold text-chakra-700 backdrop-blur-sm transition-all duration-300;
+    font-family: "Poppins", sans-serif;
+  }
+
+  .btn-secondary:hover {
+    @apply bg-chakra-50 border-chakra-700 shadow-chakra-glow;
+    transform: translateY(-2px);
+  }
+
+  .glass-input {
+    @apply w-full rounded-xl border-0 bg-white/60 px-4 py-3 text-slate-800 outline-none ring-1 ring-slate-200 backdrop-blur-sm transition-all duration-300 placeholder:text-slate-400;
+  }
+
+  .glass-input:focus {
+    @apply bg-white/90 ring-2 ring-saffron-400 shadow-lg;
+  }
+
+  .shimmer-bg {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+
+  .text-gradient-saffron {
+    @apply bg-clip-text text-transparent;
+    background-image: linear-gradient(135deg, #f97316 0%, #ea580c 100%);
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@layer utilities {
+  .animation-delay-100 {
+    animation-delay: 100ms;
+  }
+  .animation-delay-200 {
+    animation-delay: 200ms;
+  }
+  .animation-delay-300 {
+    animation-delay: 300ms;
+  }
+  .animation-delay-400 {
+    animation-delay: 400ms;
+  }
+  .animation-delay-500 {
+    animation-delay: 500ms;
+  }
+
+  .text-balance {
+    text-wrap: balance;
+  }
+}
