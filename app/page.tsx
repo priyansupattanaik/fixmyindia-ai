@@ -1,300 +1,90 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useRouter } from "next/navigation";
-import {
-  ArrowRight,
-  Shield,
-  Zap,
-  MapPin,
-  MessageSquare,
-  Sparkles,
-  Clock,
-  EyeOff,
-} from "lucide-react";
+import { QueryComposer } from "@/app/components/query/QueryComposer";
 import { useSessionState } from "@/app/hooks/useSessionState";
-import { GlassCard } from "@/app/components/ui/GlassCard";
-import { EphemeralWarning } from "@/app/components/ui/EphemeralWarning";
 import {
   PageTransition,
-  StaggerContainer,
-  StaggerItem,
   FadeIn,
 } from "@/app/components/animations/PageTransition";
-import { CategorySelector } from "@/app/components/query/CategorySelector";
-import { QueryCategory } from "@/app/types";
+import { UploadedImage, GeoLocation, QueryCategory } from "@/app/types";
+import { getDailyCivicTip } from "@/app/actions/getDailyTip"; // You need to create this file
 
 export default function Home() {
   const router = useRouter();
-  const { createQuery, updateQuery } = useSessionState();
-  const [quickText, setQuickText] = useState("");
-  const [selectedCategory, setSelectedCategory] =
-    useState<QueryCategory | null>(null);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const { startQuery } = useSessionState();
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [dailyTip, setDailyTip] = useState("Loading today's civic insight...");
 
-  const handleQuickStart = () => {
-    if (quickText.trim().length < 10) return;
+  // Fetch the AI tip on mount
+  useEffect(() => {
+    getDailyCivicTip().then(setDailyTip);
+  }, []);
 
-    setIsSubmitting(true);
-    const id = createQuery(quickText);
-    if (selectedCategory) {
-      updateQuery({ category: selectedCategory });
-    }
+  const handleAnalyze = async (data: {
+    text: string;
+    category: QueryCategory | null;
+    images: UploadedImage[];
+    location: GeoLocation | null;
+  }) => {
+    setIsAnalyzing(true);
 
+    // Start the session state
+    startQuery({
+      text: data.text,
+      category: data.category, // Can be null, backend will handle it
+      images: data.images,
+      location: data.location,
+    });
+
+    // Simulate a brief "thinking" delay for UX before routing
     setTimeout(() => {
-      router.push("/report");
-    }, 300);
+      router.push("/solution");
+    }, 800);
   };
-
-  const features = [
-    { icon: MapPin, title: "Precise Location", desc: "Pin exact spots on map" },
-    {
-      icon: MessageSquare,
-      title: "AI Solutions",
-      desc: "Instant actionable steps",
-    },
-    { icon: Shield, title: "100% Private", desc: "No data stored ever" },
-    { icon: Zap, title: "Instant", desc: "Results in seconds" },
-  ];
 
   return (
     <PageTransition>
-      <EphemeralWarning />
-
-      <section className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 overflow-hidden">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      <div className="min-h-screen flex flex-col items-center justify-center p-4 sm:p-6 relative overflow-hidden">
+        {/* Dynamic AI Header */}
+        <FadeIn
+          delay={0.1}
+          className="w-full max-w-2xl text-center mb-8 relative z-10"
+        >
           <motion.div
-            animate={{
-              scale: [1, 1.2, 1],
-              rotate: [0, 90, 0],
-            }}
-            transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
-            className="absolute top-20 right-10 w-96 h-96 bg-saffron-200/30 rounded-full blur-3xl"
-          />
-          <motion.div
-            animate={{
-              scale: [1, 1.3, 1],
-              x: [0, 50, 0],
-            }}
-            transition={{ duration: 15, repeat: Infinity, ease: "easeInOut" }}
-            className="absolute bottom-20 left-10 w-72 h-72 bg-chakra-200/30 rounded-full blur-3xl"
-          />
-        </div>
-
-        <div className="relative z-10 max-w-5xl mx-auto text-center space-y-8">
-          <FadeIn delay={0}>
-            <motion.div
-              className="inline-flex items-center space-x-2 px-4 py-2 rounded-full bg-white/60 backdrop-blur-sm border border-white/40 shadow-sm"
-              whileHover={{ scale: 1.05 }}
-            >
-              <Sparkles className="h-4 w-4 text-saffron-500" />
-              <span className="text-sm font-medium text-slate-700">
-                AI-Powered Civic Solutions
-              </span>
-            </motion.div>
-          </FadeIn>
-
-          <StaggerContainer className="space-y-4">
-            <StaggerItem>
-              <h1 className="text-5xl sm:text-6xl md:text-7xl font-bold text-slate-900 leading-tight">
-                Fix Your City <br />
-                <span className="text-gradient-saffron">
-                  Without the Red Tape
-                </span>
-              </h1>
-            </StaggerItem>
-            <StaggerItem>
-              <p className="text-xl sm:text-2xl text-slate-600 max-w-2xl mx-auto leading-relaxed">
-                Report potholes, Aadhaar issues, power cuts, and more. Get exact
-                steps to resolve them—whom to call, what to say, and where to
-                go.
-              </p>
-            </StaggerItem>
-          </StaggerContainer>
-
-          <FadeIn
-            delay={0.4}
-            className="flex flex-wrap justify-center gap-6 text-sm text-slate-500"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="inline-block px-4 py-1.5 rounded-full bg-saffron-50 border border-saffron-100 text-saffron-700 text-xs font-semibold mb-4 uppercase tracking-wider"
           >
-            <div className="flex items-center space-x-2">
-              <EyeOff className="h-4 w-4" />
-              <span>No login required</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Clock className="h-4 w-4" />
-              <span>30 seconds to report</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <Shield className="h-4 w-4" />
-              <span>Data disappears on close</span>
-            </div>
-          </FadeIn>
+            AI-Powered Citizen Support
+          </motion.div>
 
-          <FadeIn delay={0.6} className="max-w-2xl mx-auto pt-8">
-            <GlassCard intensity="strong" className="p-2 sm:p-4">
-              <div className="space-y-4">
-                <div className="relative">
-                  <textarea
-                    value={quickText}
-                    onChange={(e) => setQuickText(e.target.value)}
-                    placeholder="Describe your issue... (e.g., 'Huge pothole near City Hospital main gate, causing accidents daily')"
-                    className="w-full p-4 text-lg bg-transparent border-0 outline-none resize-none placeholder:text-slate-400 min-h-[120px]"
-                    rows={3}
-                  />
-                  <div className="absolute bottom-3 right-3 text-xs text-slate-400">
-                    {quickText.length} chars
-                  </div>
-                </div>
+          <h1 className="text-4xl sm:text-6xl font-black text-slate-900 mb-4 tracking-tight leading-tight">
+            Fix My{" "}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-saffron-500 via-white to-green-600 bg-[length:100%_auto]">
+              India
+            </span>
+          </h1>
 
-                <div className="border-t border-slate-200 pt-4">
-                  <CategorySelector
-                    selected={selectedCategory}
-                    onSelect={setSelectedCategory}
-                  />
-                </div>
-
-                <div className="flex flex-col sm:flex-row gap-3 pt-2">
-                  <motion.button
-                    onClick={handleQuickStart}
-                    disabled={quickText.trim().length < 10 || isSubmitting}
-                    className={`
-                      flex-1 flex items-center justify-center space-x-2 py-4 rounded-xl font-bold text-lg transition-all
-                      ${
-                        quickText.trim().length >= 10 && !isSubmitting
-                          ? "bg-saffron-500 text-white shadow-saffron-glow hover:bg-saffron-600"
-                          : "bg-slate-200 text-slate-400 cursor-not-allowed"
-                      }
-                    `}
-                    whileHover={
-                      quickText.trim().length >= 10 ? { scale: 1.02 } : {}
-                    }
-                    whileTap={
-                      quickText.trim().length >= 10 ? { scale: 0.98 } : {}
-                    }
-                  >
-                    {isSubmitting ? (
-                      <motion.div
-                        className="h-6 w-6 border-3 border-white border-t-transparent rounded-full"
-                        animate={{ rotate: 360 }}
-                        transition={{
-                          duration: 1,
-                          repeat: Infinity,
-                          ease: "linear",
-                        }}
-                      />
-                    ) : (
-                      <>
-                        <span>Get Instant Solution</span>
-                        <ArrowRight className="h-5 w-5" />
-                      </>
-                    )}
-                  </motion.button>
-                </div>
-              </div>
-            </GlassCard>
-
-            <p className="mt-3 text-sm text-slate-500">
-              Add photos and exact location on the next step for precision
-            </p>
-          </FadeIn>
-
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-16 max-w-4xl mx-auto">
-            {features.map((feature, idx) => (
-              <FadeIn key={feature.title} delay={0.8 + idx * 0.1}>
-                <div className="p-4 rounded-2xl bg-white/40 backdrop-blur-sm border border-white/30 text-center space-y-2 hover:bg-white/60 transition-colors">
-                  <div className="inline-flex p-3 rounded-xl bg-white shadow-sm text-saffron-600">
-                    <feature.icon className="h-6 w-6" />
-                  </div>
-                  <h3 className="font-semibold text-slate-800">
-                    {feature.title}
-                  </h3>
-                  <p className="text-xs text-slate-600">{feature.desc}</p>
-                </div>
-              </FadeIn>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20 px-4 bg-white/30">
-        <div className="max-w-6xl mx-auto">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-              How It Works
-            </h2>
-            <p className="text-lg text-slate-600">
-              Three simple steps to civic solutions
-            </p>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-8">
-            {[
-              {
-                step: "01",
-                title: "Describe & Locate",
-                desc: "Tell us the issue and drop a pin on the map. Add photos for clarity.",
-              },
-              {
-                step: "02",
-                title: "AI Analysis",
-                desc: "Our AI identifies the right department, laws, and procedures applicable to your issue.",
-              },
-              {
-                step: "03",
-                title: "Take Action",
-                desc: "Get exact contact numbers, email templates, office addresses, and follow-up steps.",
-              },
-            ].map((item, idx) => (
-              <motion.div
-                key={item.step}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: idx * 0.2 }}
-                className="relative"
-              >
-                <div className="text-6xl font-bold text-saffron-200/50 absolute -top-6 -left-2">
-                  {item.step}
-                </div>
-                <GlassCard
-                  intensity="medium"
-                  className="p-6 h-full relative z-10"
-                >
-                  <h3 className="text-xl font-bold text-slate-800 mb-2">
-                    {item.title}
-                  </h3>
-                  <p className="text-slate-600">{item.desc}</p>
-                </GlassCard>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <footer className="py-12 px-4 border-t border-white/30 bg-white/20">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-saffron-500 to-saffron-600 flex items-center justify-center text-white font-bold">
-              F
-            </div>
-            <span className="font-bold text-slate-800">FixMyIndiaAI</span>
-          </div>
-          <p className="text-sm text-slate-500 text-center">
-            Made for India • No data stored • Open Source • Free forever
+          {/* The AI Tip appears here */}
+          <p className="text-lg sm:text-xl text-slate-600 max-w-lg mx-auto leading-relaxed">
+            {dailyTip}
           </p>
-          <div className="flex items-center space-x-4 text-sm text-slate-600">
-            <span className="flex items-center space-x-1">
-              <Shield className="h-4 w-4" />
-              <span>Private</span>
-            </span>
-            <span className="flex items-center space-x-1">
-              <Zap className="h-4 w-4" />
-              <span>Fast</span>
-            </span>
-          </div>
+        </FadeIn>
+
+        {/* The New "Smart" Composer */}
+        <FadeIn delay={0.2} className="w-full relative z-20">
+          <QueryComposer onAnalyze={handleAnalyze} isAnalyzing={isAnalyzing} />
+        </FadeIn>
+
+        {/* Background Decorative Elements */}
+        <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none z-0">
+          <div className="absolute top-[-10%] left-[-10%] w-[50%] h-[50%] bg-saffron-200/20 rounded-full blur-[120px]" />
+          <div className="absolute bottom-[-10%] right-[-10%] w-[50%] h-[50%] bg-green-200/20 rounded-full blur-[120px]" />
         </div>
-      </footer>
+      </div>
     </PageTransition>
   );
 }

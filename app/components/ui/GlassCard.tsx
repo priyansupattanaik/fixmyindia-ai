@@ -1,45 +1,53 @@
-"use client";
+import { motion, HTMLMotionProps } from "framer-motion";
 
-import { motion } from "framer-motion";
-import { GlassCardProps } from "@/app/types";
+interface GlassCardProps extends HTMLMotionProps<"div"> {
+  children: React.ReactNode;
+  intensity?: "light" | "medium" | "strong";
+  interactive?: boolean;
+  className?: string;
+  onClick?: () => void;
+}
 
 export function GlassCard({
   children,
-  className = "",
   intensity = "medium",
   interactive = false,
+  className = "",
   onClick,
+  ...props
 }: GlassCardProps) {
-  const intensityClasses = {
+  // Safe class handling without external 'cn' dependency
+  const intensityStyles = {
     light: "bg-white/40 border-white/30",
-    medium: "bg-white/60 border-white/40 shadow-glass",
-    strong: "bg-white/85 border-white/60 shadow-glass-lg backdrop-blur-xl",
+    medium: "bg-white/60 border-white/40",
+    strong: "bg-white/80 border-white/50",
   };
 
-  const Component = interactive ? motion.button : motion.div;
-  const interactiveProps = interactive
-    ? {
-        whileHover: { scale: 1.02, y: -2 },
-        whileTap: { scale: 0.98 },
-        onClick,
-      }
-    : {};
+  const baseStyles =
+    "backdrop-blur-md rounded-2xl border shadow-sm transition-all duration-200";
+
+  const interactiveStyles =
+    interactive || onClick
+      ? "cursor-pointer hover:shadow-md hover:scale-[1.01] active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-saffron-500 focus:ring-offset-2"
+      : "";
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if ((interactive || onClick) && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      onClick?.();
+    }
+  };
 
   return (
-    <Component
-      className={`
-        relative overflow-hidden rounded-2xl backdrop-blur-md border
-        ${intensityClasses[intensity]}
-        ${interactive ? "cursor-pointer transition-shadow hover:shadow-glass-lg" : ""}
-        ${className}
-      `}
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
-      {...interactiveProps}
+    <motion.div
+      className={`${baseStyles} ${intensityStyles[intensity]} ${interactiveStyles} ${className}`}
+      onClick={onClick}
+      role={interactive || onClick ? "button" : undefined}
+      tabIndex={interactive || onClick ? 0 : undefined}
+      onKeyDown={handleKeyDown}
+      {...props}
     >
-      <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/50 to-transparent" />
-      <div className="relative z-10">{children}</div>
-    </Component>
+      {children}
+    </motion.div>
   );
 }

@@ -1,35 +1,15 @@
+"use server";
+
 import { AISolution, QueryCategory, UploadedImage } from "@/app/types";
 
-const GROQ_API_KEY = process.env.NEXT_PUBLIC_GROQ_API_KEY;
+// Note: Ensure you rename your env variable in .env.local to GROQ_API_KEY (remove NEXT_PUBLIC_)
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 const GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions";
 
+// Simple in-memory rate limit for serverless (Note: This resets on server restart, which is fine for MVP)
 let requestCount = 0;
 const MAX_REQUESTS_PER_MINUTE = 20;
 let minuteResetTimer: NodeJS.Timeout | null = null;
-
-export class GroqError extends Error {
-  constructor(
-    message: string,
-    public code:
-      | "rate_limit"
-      | "invalid_key"
-      | "network"
-      | "content_policy"
-      | "unknown"
-      | "bad_request",
-    public retryAfter?: number,
-  ) {
-    super(message);
-    this.name = "GroqError";
-  }
-}
-
-interface GenerateSolutionParams {
-  text: string;
-  category: QueryCategory | null;
-  images: UploadedImage[];
-  location: { latitude: number; longitude: number } | null;
-}
 
 const categoryPrompts: Record<QueryCategory, string> = {
   roads:
@@ -61,22 +41,36 @@ function resetRequestCount() {
   }, 60000);
 }
 
-export async function generateSolution(
+// Define a standard return type for the server action
+type ActionResponse =
+  | { success: true; data: AISolution }
+  | { success: false; error: string; retryAfter?: number };
+
+interface GenerateSolutionParams {
+  text: string;
+  category: QueryCategory | null;
+  images: UploadedImage[];
+  location: { latitude: number; longitude: number } | null;
+}
+
+export async function generateSolutionAction(
   params: GenerateSolutionParams,
-): Promise<AISolution> {
-  if (!GROQ_API_KEY || GROQ_API_KEY === "gsk_your_groq_api_key_here") {
-    throw new GroqError(
-      "Please add your Groq API key to .env.local file",
-      "invalid_key",
-    );
+): Promise<ActionResponse> {
+  // 1. Security Check
+  if (!GROQ_API_KEY) {
+    return {
+      success: false,
+      error: "Server misconfiguration: API key missing.",
+    };
   }
 
+  // 2. Rate Limiting
   if (requestCount >= MAX_REQUESTS_PER_MINUTE) {
-    throw new GroqError(
-      "Rate limit exceeded. Please try again in a minute.",
-      "rate_limit",
-      60000,
-    );
+    return {
+      success: false,
+      error: "System busy. Please try again in a minute.",
+      retryAfter: 60000,
+    };
   }
 
   const systemPrompt = `You are FixMyIndiaAI, an expert Indian civic administration assistant. Provide actionable, specific guidance for Indian citizens.
@@ -117,10 +111,20 @@ Expected JSON structure:
 }`;
 
   const userPrompt = `Issue Category: ${params.category || "General"}
-Category Context: ${params.category ? categoryPrompts[params.category] : "General civic issue"}
+Category Context: ${
+    params.category ? categoryPrompts[params.category] : "General civic issue"
+  }
 User Description: ${params.text}
-Location: ${params.location ? `Lat: ${params.location.latitude}, Lng: ${params.location.longitude}` : "Not provided"}
-${params.images.length > 0 ? `Attached: ${params.images.length} image(s) for visual reference` : "No images attached"}
+Location: ${
+    params.location
+      ? `Lat: ${params.location.latitude}, Lng: ${params.location.longitude}`
+      : "Not provided"
+  }
+${
+  params.images.length > 0
+    ? `Attached: ${params.images.length} image(s) for visual reference`
+    : "No images attached"
+}
 
 Generate a specific action plan for this Indian civic issue. Return only valid JSON.`;
 
@@ -135,6 +139,7 @@ Generate a specific action plan for this Indian civic issue. Return only valid J
       { role: "user", content: userPrompt },
     ];
 
+    // Handle Images
     if (params.images.length > 0) {
       const imageContents = params.images.map((img) => ({
         type: "image_url",
@@ -179,32 +184,19 @@ Generate a specific action plan for this Indian civic issue. Return only valid J
 
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error("Groq API Error:", errorData);
 
-      if (response.status === 400) {
-        throw new GroqError(
-          `Invalid request: ${errorData.error?.message || "Check your API key and model availability"}`,
-          "bad_request",
-        );
-      }
-      if (response.status === 401) {
-        throw new GroqError(
-          "Invalid API key. Please check your .env.local file.",
-          "invalid_key",
-        );
-      }
       if (response.status === 429) {
         const retryAfter = response.headers.get("retry-after");
-        throw new GroqError(
-          "Rate limit hit. Too many requests.",
-          "rate_limit",
-          retryAfter ? parseInt(retryAfter) * 1000 : 60000,
-        );
+        return {
+          success: false,
+          error: "Rate limit hit. Too many requests.",
+          retryAfter: retryAfter ? parseInt(retryAfter) * 1000 : 60000,
+        };
       }
-      throw new GroqError(
-        `API error: ${response.status} - ${errorData.error?.message || "Unknown error"}`,
-        "unknown",
-      );
+      return {
+        success: false,
+        error: `API error: ${response.status} - ${errorData.error?.message || "Unknown error"}`,
+      };
     }
 
     const data = await response.json();
@@ -212,18 +204,18 @@ Generate a specific action plan for this Indian civic issue. Return only valid J
 
     let parsed;
     try {
+      // Clean up markdown if AI adds it
       const jsonMatch =
         content.match(/```json\n?([\s\S]*?)\n?```/) ||
         content.match(/```\n?([\s\S]*?)\n?```/);
       const jsonStr = jsonMatch ? jsonMatch[1] : content;
       parsed = JSON.parse(jsonStr.trim());
     } catch (e) {
-      console.error("Failed to parse JSON:", content);
-      throw new GroqError("Failed to parse AI response format", "unknown");
+      return { success: false, error: "Failed to parse AI response format" };
     }
 
     if (!parsed.steps || !Array.isArray(parsed.steps)) {
-      throw new Error("Invalid response structure");
+      return { success: false, error: "Invalid response structure from AI" };
     }
 
     const solution: AISolution = {
@@ -233,24 +225,9 @@ Generate a specific action plan for this Indian civic issue. Return only valid J
       generatedAt: Date.now(),
     };
 
-    return solution;
+    return { success: true, data: solution };
   } catch (error) {
-    if (error instanceof GroqError) throw error;
-
-    if (error instanceof SyntaxError) {
-      throw new GroqError("Failed to parse AI response", "unknown");
-    }
-
-    if (
-      error instanceof TypeError &&
-      (error as any).message?.includes("fetch")
-    ) {
-      throw new GroqError(
-        "Network error. Check your internet connection.",
-        "network",
-      );
-    }
-
-    throw new GroqError("Unexpected error occurred", "unknown");
+    console.error("Server Action Error:", error);
+    return { success: false, error: "Internal server error" };
   }
 }

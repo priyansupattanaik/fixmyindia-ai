@@ -1,12 +1,22 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { MapPin, Navigation, Search, X, LocateFixed } from "lucide-react";
+import {
+  MapPin,
+  Navigation,
+  Search,
+  X,
+  LocateFixed,
+  Loader2,
+} from "lucide-react";
 import dynamic from "next/dynamic";
 import { GeoLocation } from "@/app/types";
 import { GlassCard } from "@/app/components/ui/GlassCard";
+import L from "leaflet";
+import "leaflet/dist/leaflet.css";
 
+// Dynamic imports to prevent SSR crashes with Leaflet
 const MapContainer = dynamic(
   () => import("react-leaflet").then((mod) => mod.MapContainer),
   { ssr: false },
@@ -19,12 +29,24 @@ const Marker = dynamic(
   () => import("react-leaflet").then((mod) => mod.Marker),
   { ssr: false },
 );
-const useMapEvents = dynamic(
-  () => import("react-leaflet").then((mod) => mod.useMapEvents),
-  { ssr: false },
-);
 
-import "leaflet/dist/leaflet.css";
+// Fix for missing Leaflet marker icons in Next.js
+const fixLeafletIcon = () => {
+  try {
+    // @ts-ignore
+    delete L.Icon.Default.prototype._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl:
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png",
+      iconUrl:
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png",
+      shadowUrl:
+        "https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png",
+    });
+  } catch (e) {
+    // Leaflet might not be loaded yet, ignore
+  }
+};
 
 interface LocationPickerProps {
   onLocationSelect: (location: GeoLocation) => void;
@@ -32,46 +54,7 @@ interface LocationPickerProps {
   compact?: boolean;
 }
 
-const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 };
-
-function LocationMarker({
-  onSelect,
-}: {
-  onSelect: (loc: GeoLocation) => void;
-}) {
-  const [position, setPosition] = useState<{ lat: number; lng: number } | null>(
-    null,
-  );
-
-  const map = useMapEvents({
-    click(e) {
-      setPosition(e.latlng);
-      onSelect({
-        latitude: e.latlng.lat,
-        longitude: e.latlng.lng,
-        accuracy: 0,
-      });
-    },
-  });
-
-  return position === null ? null : (
-    <Marker
-      position={position}
-      draggable={true}
-      eventHandlers={{
-        dragend: (e) => {
-          const marker = e.target;
-          const pos = marker.getLatLng();
-          onSelect({
-            latitude: pos.lat,
-            longitude: pos.lng,
-            accuracy: 0,
-          });
-        },
-      }}
-    />
-  );
-}
+const DEFAULT_CENTER = { lat: 20.5937, lng: 78.9629 }; // Center of India
 
 export function LocationPicker({
   onLocationSelect,
@@ -84,7 +67,35 @@ export function LocationPicker({
   const [selectedLocation, setSelectedLocation] = useState<GeoLocation | null>(
     initialLocation || null,
   );
-  const [mapCenter, setMapCenter] = useState(DEFAULT_CENTER);
+
+  // We store the map instance to control it programmatically (flyTo, etc.)
+  const [map, setMap] = useState<L.Map | null>(null);
+
+  // Initialize icon fix once
+  useEffect(() => {
+    fixLeafletIcon();
+  }, []);
+
+  // Handle Map Clicks manually to avoid Hook complications
+  useEffect(() => {
+    if (!map) return;
+
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const { lat, lng } = e.latlng;
+      const newLoc = {
+        latitude: lat,
+        longitude: lng,
+        accuracy: 10, // Approximate for manual pin
+      };
+      setSelectedLocation(newLoc);
+      onLocationSelect(newLoc);
+    };
+
+    map.on("click", handleMapClick);
+    return () => {
+      map.off("click", handleMapClick);
+    };
+  }, [map, onLocationSelect]);
 
   const handleGetCurrentLocation = () => {
     setLoading(true);
@@ -104,8 +115,13 @@ export function LocationPicker({
           accuracy: position.coords.accuracy,
         };
         setSelectedLocation(loc);
-        setMapCenter({ lat: loc.latitude, lng: loc.longitude });
         onLocationSelect(loc);
+
+        // Fly to location
+        if (map) {
+          map.flyTo([loc.latitude, loc.longitude], 16);
+        }
+
         setLoading(false);
       },
       (err) => {
@@ -120,19 +136,48 @@ export function LocationPicker({
     );
   };
 
-  const handleSearch = (e: React.FormEvent) => {
+  const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (searchQuery.toLowerCase().includes("delhi")) {
-      const loc = { lat: 28.6139, lng: 77.209 };
-      setMapCenter(loc);
-      const geoLoc = {
-        latitude: loc.lat,
-        longitude: loc.lng,
-        accuracy: 100,
-        address: "New Delhi, Delhi, India",
-      };
-      setSelectedLocation(geoLoc);
-      onLocationSelect(geoLoc);
+    if (!searchQuery.trim()) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Use OpenStreetMap Nominatim API (Free)
+      const response = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+          searchQuery,
+        )}&countrycodes=in&limit=1`,
+      );
+
+      const data = await response.json();
+
+      if (data && data.length > 0) {
+        const result = data[0];
+        const lat = parseFloat(result.lat);
+        const lng = parseFloat(result.lon);
+
+        const newLoc = {
+          latitude: lat,
+          longitude: lng,
+          accuracy: 100,
+          address: result.display_name,
+        };
+
+        setSelectedLocation(newLoc);
+        onLocationSelect(newLoc);
+
+        if (map) {
+          map.flyTo([lat, lng], 14);
+        }
+      } else {
+        setError("Location not found. Try a different search term.");
+      }
+    } catch (err) {
+      setError("Failed to search location. Please check your internet.");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -173,7 +218,7 @@ export function LocationPicker({
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search location (e.g., 'Mumbai', 'Near Connaught Place')..."
+            placeholder="Search city, area, or landmark..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-4 py-3 rounded-xl border border-slate-200 bg-white/70 backdrop-blur-sm focus:outline-none focus:ring-2 focus:ring-saffron-400 focus:border-transparent transition-all"
@@ -188,11 +233,7 @@ export function LocationPicker({
           whileTap={{ scale: 0.98 }}
         >
           {loading ? (
-            <motion.div
-              className="h-5 w-5 border-2 border-white border-t-transparent rounded-full"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-            />
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <LocateFixed className="h-5 w-5" />
           )}
@@ -216,39 +257,22 @@ export function LocationPicker({
 
       <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-glass border border-white/50">
         <MapContainer
-          center={[mapCenter.lat, mapCenter.lng]}
-          zoom={13}
+          center={[DEFAULT_CENTER.lat, DEFAULT_CENTER.lng]}
+          zoom={5}
           scrollWheelZoom={false}
           style={{ height: "100%", width: "100%" }}
           className="z-10"
+          // @ts-ignore - ref types in react-leaflet can be tricky
+          ref={setMap}
         >
           <TileLayer
             attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           />
-          <LocationMarker
-            onSelect={(loc) => {
-              setSelectedLocation(loc);
-              onLocationSelect(loc);
-            }}
-          />
+
           {selectedLocation && (
             <Marker
               position={[selectedLocation.latitude, selectedLocation.longitude]}
-              draggable={true}
-              eventHandlers={{
-                dragend: (e) => {
-                  const marker = e.target;
-                  const pos = marker.getLatLng();
-                  const newLoc = {
-                    latitude: pos.lat,
-                    longitude: pos.lng,
-                    accuracy: selectedLocation.accuracy,
-                  };
-                  setSelectedLocation(newLoc);
-                  onLocationSelect(newLoc);
-                },
-              }}
             />
           )}
         </MapContainer>
@@ -260,7 +284,7 @@ export function LocationPicker({
           >
             <MapPin className="h-4 w-4 text-saffron-600" />
             <span className="text-sm text-slate-700">
-              Click anywhere on the map to pin the exact location
+              Tap anywhere on map to pin exact location
             </span>
           </GlassCard>
         </div>
@@ -279,8 +303,9 @@ export function LocationPicker({
             <div>
               <p className="font-semibold">Location Confirmed</p>
               <p className="text-sm opacity-90">
-                Lat: {selectedLocation.latitude.toFixed(6)}, Lng:{" "}
-                {selectedLocation.longitude.toFixed(6)}
+                {selectedLocation.address
+                  ? selectedLocation.address.split(",")[0]
+                  : `Lat: ${selectedLocation.latitude.toFixed(4)}, Lng: ${selectedLocation.longitude.toFixed(4)}`}
               </p>
             </div>
           </div>

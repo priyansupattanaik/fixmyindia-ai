@@ -1,147 +1,151 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
+import { Send, Mic, Image as ImageIcon, MapPin, X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Sparkles, Send, Mic, X } from "lucide-react";
-import { QueryCategory } from "@/app/types";
+import { GlassCard } from "@/app/components/ui/GlassCard";
+import { ImageUploader } from "./ImageUploader";
+import { LocationPicker } from "@/app/components/maps/LocationPicker";
+import { UploadedImage, GeoLocation, QueryCategory } from "@/app/types";
+
+// Dynamic placeholders that cycle
+const DYNAMIC_PLACEHOLDERS = [
+  "Streetlight not working in Sector 4...",
+  "Garbage pile up near the main market...",
+  "Water supply contaminated in my area...",
+  "Pothole causing traffic on MG Road...",
+  "Denied ration card at the local office...",
+  "Electricity meter reading is incorrect...",
+];
 
 interface QueryComposerProps {
-  value: string;
-  onChange: (value: string) => void;
-  onSubmit: () => void;
-  selectedCategory: QueryCategory | null;
-  isLoading?: boolean;
-  placeholder?: string;
+  onAnalyze: (data: {
+    text: string;
+    category: QueryCategory | null;
+    images: UploadedImage[];
+    location: GeoLocation | null;
+  }) => void;
+  isAnalyzing: boolean;
 }
 
-export function QueryComposer({
-  value,
-  onChange,
-  onSubmit,
-  selectedCategory,
-  isLoading = false,
-  placeholder = "Describe your issue in detail... (e.g., 'Large pothole near HDFC bank on MG Road causing accidents')",
-}: QueryComposerProps) {
-  const [isFocused, setIsFocused] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+export function QueryComposer({ onAnalyze, isAnalyzing }: QueryComposerProps) {
+  const [text, setText] = useState("");
+  const [images, setImages] = useState<UploadedImage[]>([]);
+  const [location, setLocation] = useState<GeoLocation | null>(null);
+  const [showLocation, setShowLocation] = useState(false);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const [displayedPlaceholder, setDisplayedPlaceholder] = useState("");
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && e.metaKey) {
-      onSubmit();
-    }
-  };
+  // Typewriter effect logic
+  useEffect(() => {
+    const targetText = DYNAMIC_PLACEHOLDERS[placeholderIndex];
+    let charIndex = 0;
 
-  const adjustTextareaHeight = () => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`;
-    }
+    const typingInterval = setInterval(() => {
+      if (charIndex <= targetText.length) {
+        setDisplayedPlaceholder(targetText.slice(0, charIndex));
+        charIndex++;
+      } else {
+        clearInterval(typingInterval);
+        setTimeout(() => {
+          setPlaceholderIndex(
+            (prev) => (prev + 1) % DYNAMIC_PLACEHOLDERS.length,
+          );
+        }, 2000); // Wait 2 seconds before next phrase
+      }
+    }, 50); // Typing speed
+
+    return () => clearInterval(typingInterval);
+  }, [placeholderIndex]);
+
+  const handleSubmit = () => {
+    if (!text.trim()) return;
+    // We pass 'null' for category so the AI infers it automatically
+    onAnalyze({ text, category: null, images, location });
   };
 
   return (
-    <div className="relative">
-      <AnimatePresence>
-        {isFocused && value.length > 10 && !selectedCategory && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 10 }}
-            className="absolute -top-12 left-0 right-0 flex items-center space-x-2 px-3 py-2 rounded-lg bg-chakra-50 border border-chakra-200 text-chakra-700 text-sm"
-          >
-            <Sparkles className="h-4 w-4" />
-            <span>Tip: Select a category above for faster processing</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      <div
-        className={`
-        relative rounded-2xl transition-all duration-300
-        ${isFocused ? "ring-2 ring-saffron-400 shadow-lg" : "ring-1 ring-slate-200"}
-      `}
+    <div className="w-full max-w-2xl mx-auto relative z-10">
+      <GlassCard
+        intensity="strong"
+        className="p-2 sm:p-4 rounded-3xl border-white/40 shadow-xl"
       >
-        <textarea
-          ref={textareaRef}
-          value={value}
-          onChange={(e) => {
-            onChange(e.target.value);
-            adjustTextareaHeight();
-          }}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          onKeyDown={handleKeyDown}
-          placeholder={placeholder}
-          rows={3}
-          className="w-full p-4 pr-24 pb-12 rounded-2xl bg-white/80 backdrop-blur-sm border-0 outline-none resize-none text-slate-800 placeholder:text-slate-400"
-          disabled={isLoading}
-        />
+        <div className="relative">
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder={displayedPlaceholder}
+            className="w-full min-h-[120px] p-4 bg-transparent border-none focus:ring-0 text-lg text-slate-800 placeholder:text-slate-400 resize-none rounded-xl"
+            disabled={isAnalyzing}
+          />
 
-        <div className="absolute bottom-3 left-4 text-xs text-slate-400">
-          {value.length} chars
-          {value.length < 20 && value.length > 0 && (
-            <span className="text-saffron-500 ml-2">Minimum 20 characters</span>
-          )}
-        </div>
+          {/* Bottom Toolbar */}
+          <div className="flex items-center justify-between px-2 pb-2">
+            <div className="flex items-center space-x-2">
+              <motion.button
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => setShowLocation(!showLocation)}
+                className={`p-2 rounded-full transition-colors ${
+                  location
+                    ? "bg-green-100 text-green-600"
+                    : "hover:bg-slate-100 text-slate-500"
+                }`}
+                title="Add Location"
+              >
+                <MapPin className="h-5 w-5" />
+              </motion.button>
 
-        <div className="absolute bottom-3 right-3 flex items-center space-x-2">
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            className="p-2 rounded-full text-slate-400 hover:text-saffron-600 hover:bg-saffron-50 transition-colors"
-            title="Voice input (coming soon)"
-          >
-            <Mic className="h-5 w-5" />
-          </motion.button>
+              <div className="h-6 w-[1px] bg-slate-200 mx-1" />
 
-          {value && (
+              <ImageUploader images={images} onImagesChange={setImages} />
+            </div>
+
             <motion.button
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={handleSubmit}
+              disabled={!text.trim() || isAnalyzing}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
-              onClick={() => onChange("")}
-              className="p-2 rounded-full text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+              className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-bold text-white shadow-lg transition-all ${
+                !text.trim() || isAnalyzing
+                  ? "bg-slate-300 cursor-not-allowed"
+                  : "bg-gradient-to-r from-saffron-500 to-saffron-600 hover:shadow-saffron-500/30"
+              }`}
             >
-              <X className="h-5 w-5" />
+              <span>{isAnalyzing ? "Analyzing..." : "Fix It"}</span>
+              {!isAnalyzing && <Send className="h-4 w-4" />}
             </motion.button>
-          )}
-
-          <motion.button
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            onClick={onSubmit}
-            disabled={!value.trim() || value.length < 20 || isLoading}
-            className={`
-              flex items-center space-x-2 px-4 py-2 rounded-full font-semibold text-sm transition-all
-              ${
-                value.trim() && value.length >= 20 && !isLoading
-                  ? "bg-saffron-500 text-white shadow-saffron-glow hover:bg-saffron-600"
-                  : "bg-slate-200 text-slate-400 cursor-not-allowed"
-              }
-            `}
-          >
-            {isLoading ? (
-              <motion.div
-                className="h-4 w-4 border-2 border-white border-t-transparent rounded-full"
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              />
-            ) : (
-              <>
-                <span>Submit</span>
-                <Send className="h-4 w-4" />
-              </>
-            )}
-          </motion.button>
+          </div>
         </div>
-      </div>
 
-      <div className="mt-2 flex justify-between text-xs text-slate-500 px-1">
-        <span>Be specific: mention landmarks, duration of issue, severity</span>
-        <span className="hidden sm:inline">Cmd + Enter to submit</span>
-      </div>
+        {/* Expandable Location Panel */}
+        <AnimatePresence>
+          {showLocation && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="overflow-hidden"
+            >
+              <div className="p-4 border-t border-slate-100">
+                <div className="flex justify-between items-center mb-2">
+                  <h3 className="text-sm font-semibold text-slate-600">
+                    Pin Location
+                  </h3>
+                  <button onClick={() => setShowLocation(false)}>
+                    <X className="h-4 w-4 text-slate-400" />
+                  </button>
+                </div>
+                <LocationPicker
+                  onLocationSelect={(loc) => setLocation(loc)}
+                  initialLocation={location}
+                  compact={true} // Use compact mode inside the composer
+                />
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </GlassCard>
     </div>
   );
 }

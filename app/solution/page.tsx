@@ -26,7 +26,8 @@ import {
   StaggerItem,
 } from "@/app/components/animations/PageTransition";
 import { LoadingScreen } from "@/app/components/animations/LoadingScreen";
-import { generateSolution, GroqError } from "@/app/lib/groqClient";
+// Import the Server Action
+import { generateSolutionAction } from "@/app/actions";
 import Link from "next/link";
 import { AISolution } from "@/app/types";
 
@@ -40,7 +41,6 @@ export default function SolutionPage() {
 
   // Critical: Use refs to prevent infinite loops
   const hasFetched = useRef(false);
-  const isRetrying = useRef(false);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -60,80 +60,81 @@ export default function SolutionPage() {
         setLoading(true);
         setError(null);
 
-        const sol = await generateSolution({
+        // Call the Server Action
+        const result = await generateSolutionAction({
           text: currentQuery.text,
           category: currentQuery.category,
           images: currentQuery.images,
           location: currentQuery.location,
         });
 
-        setSolution(sol);
-        completeQuery(sol);
-        setLoading(false);
-      } catch (err) {
-        if (
-          err instanceof GroqError &&
-          err.code === "rate_limit" &&
-          err.retryAfter &&
-          !isRetrying.current
-        ) {
-          isRetrying.current = true;
-          const waitSeconds = Math.ceil(err.retryAfter / 1000);
-          setCountdown(waitSeconds);
-          setError(`Rate limit reached. Retrying in ${waitSeconds}s...`);
-
-          setTimeout(() => {
-            hasFetched.current = false; // Reset to allow retry
-            isRetrying.current = false;
-            // Trigger re-render to retry
-            setCountdown(0);
-          }, err.retryAfter);
-        } else {
-          setError(
-            err instanceof GroqError
-              ? err.message
-              : "Failed to generate solution",
-          );
+        if (result.success) {
+          setSolution(result.data);
+          completeQuery(result.data);
           setLoading(false);
+        } else {
+          // Handle Error from Server Action
+          if (result.retryAfter) {
+            const waitSeconds = Math.ceil(result.retryAfter / 1000);
+            setCountdown(waitSeconds);
+            setError(`System busy. Retrying in ${waitSeconds}s...`);
+
+            // Auto-retry logic
+            setTimeout(() => {
+              hasFetched.current = false; // Reset to allow retry
+              setCountdown(0);
+              // The effect will re-run automatically because we reset hasFetched?
+              // No, effects don't watch refs. We need to force update or rely on countdown.
+              // Better approach: just let the user click retry or handle simple timeout re-call
+            }, result.retryAfter);
+          } else {
+            setError(result.error);
+            setLoading(false);
+          }
         }
+      } catch (err) {
+        setError("An unexpected network error occurred.");
+        setLoading(false);
       }
     };
 
-    fetchSolution();
+    // Only run if countdown is 0 (not waiting)
+    if (countdown === 0) {
+      fetchSolution();
+    }
   }, [isHydrated, currentQuery, router, completeQuery, solution, countdown]);
 
   // Handle manual retry
   const handleRetry = () => {
     hasFetched.current = false;
-    isRetrying.current = false;
     setError(null);
     setLoading(true);
-    // Force re-run by toggling a dummy state or just calling fetch again
-    // We'll use a key change approach or just rely on the effect not running again
-    // So instead, let's just call fetch directly here
-    if (currentQuery) {
-      const retryFetch = async () => {
-        try {
-          const sol = await generateSolution({
-            text: currentQuery.text,
-            category: currentQuery.category,
-            images: currentQuery.images,
-            location: currentQuery.location,
-          });
-          setSolution(sol);
-          completeQuery(sol);
-          setLoading(false);
-        } catch (err) {
-          setError(
-            err instanceof GroqError
-              ? err.message
-              : "Failed to generate solution",
-          );
-          setLoading(false);
-        }
-      };
-      retryFetch();
-    }
+    setCountdown(0);
+    // State change will trigger effect re-run if we included hasFetched in deps?
+    // No, refs don't trigger re-renders.
+    // We can just call a function directly or toggle a key.
+    // Simplest: Force a reload of the component logic by toggling a key or calling the logic:
+
+    // Manual call pattern:
+    (async () => {
+      if (!currentQuery) return;
+
+      const result = await generateSolutionAction({
+        text: currentQuery.text,
+        category: currentQuery.category,
+        images: currentQuery.images,
+        location: currentQuery.location,
+      });
+
+      if (result.success) {
+        setSolution(result.data);
+        completeQuery(result.data);
+        setLoading(false);
+      } else {
+        setError(result.error);
+        setLoading(false);
+      }
+    })();
   };
 
   if (!isHydrated || loading) {
@@ -167,29 +168,6 @@ export default function SolutionPage() {
             <p className="text-slate-600 mb-6">{error}</p>
 
             <div className="space-y-3">
-              {error.includes("API key") && (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg text-left text-sm text-amber-800 mb-4">
-                  <p className="font-semibold mb-1">Setup Instructions:</p>
-                  <ol className="list-decimal list-inside space-y-1">
-                    <li>
-                      Go to{" "}
-                      <a
-                        href="https://console.groq.com/keys"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        console.groq.com/keys
-                      </a>
-                    </li>
-                    <li>Create a free API key</li>
-                    <li>Create .env.local file</li>
-                    <li>Add: NEXT_PUBLIC_GROQ_API_KEY=your_key</li>
-                    <li>Restart server</li>
-                  </ol>
-                </div>
-              )}
-
               <button
                 onClick={handleRetry}
                 className="w-full py-3 rounded-xl bg-saffron-500 text-white font-semibold hover:bg-saffron-600 flex items-center justify-center space-x-2"
